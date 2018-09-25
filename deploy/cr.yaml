@@ -1,0 +1,4 @@
+apiVersion: "cache.flexshopper.com/v1alpha1"
+kind: "Redis"
+metadata:
+  name: "example"
