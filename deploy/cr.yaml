@@ -1,4 +1,7 @@
 apiVersion: "cache.flexshopper.com/v1alpha1"
 kind: "Redis"
 metadata:
-  name: "example"
+  name: "my-awesome-lru-cache"
+  namespace: "app"
+spec:
+  maxMemory: "3gb"

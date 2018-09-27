@@ -7,7 +7,7 @@ import (
 
 	stub "github.com/flexshopper/redis-operator/pkg/stub"
 	sdk "github.com/operator-framework/operator-sdk/pkg/sdk"
-	k8sutil "github.com/operator-framework/operator-sdk/pkg/util/k8sutil"
+	//k8sutil "github.com/operator-framework/operator-sdk/pkg/util/k8sutil"
 	sdkVersion "github.com/operator-framework/operator-sdk/version"
 
 	"github.com/sirupsen/logrus"
@@ -27,10 +27,11 @@ func main() {
 
 	resource := "cache.flexshopper.com/v1alpha1"
 	kind := "Redis"
-	namespace, err := k8sutil.GetWatchNamespace()
-	if err != nil {
-		logrus.Fatalf("failed to get watch namespace: %v", err)
-	}
+	namespace := ""
+	//namespace, err := k8sutil.GetWatchNamespace()
+	//if err != nil {
+	//	logrus.Fatalf("failed to get watch namespace: %v", err)
+	//}
 	resyncPeriod := time.Duration(5) * time.Second
 	logrus.Infof("Watching %s, %s, %s, %d", resource, kind, namespace, resyncPeriod)
 	sdk.Watch(resource, kind, namespace, resyncPeriod)
