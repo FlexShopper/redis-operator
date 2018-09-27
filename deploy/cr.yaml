@@ -4,5 +4,5 @@ metadata:
   name: "my-awesome-lru-cache"
   namespace: "app"
 spec:
-  maxMemory: "3gb"
-  port: 7000
+  maxMemory: "1gb"
+  port: 7001

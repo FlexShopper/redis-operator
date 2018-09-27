@@ -166,6 +166,10 @@ func getRedisDeployment(redis *v1alpha1.Redis) *v1.Deployment {
 						{
 							Image: redis.Spec.Image,
 							Name: redis.Name,
+							Command: []string{
+								"redis-server",
+								"/usr/local/etc/redis/redis.conf",
+							},
 							Ports: []corev1.ContainerPort{
 								{
 									ContainerPort: redis.Spec.Port,

@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: redis-operator
-          image: mrferos/redis-operator:v0.0.13
+          image: mrferos/redis-operator:v0.0.14
           ports:
           - containerPort: 60000
             name: metrics
