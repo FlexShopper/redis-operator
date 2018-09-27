@@ -5,3 +5,4 @@ metadata:
   namespace: "app"
 spec:
   maxMemory: "3gb"
+  port: 7000
