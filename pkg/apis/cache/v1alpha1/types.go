@@ -4,12 +4,14 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// We'll define some default values we'll reference in SetDefaults
 const (
 	defaultMaxMemory = "2mb"
 	defaultMaxMemoryEvictionPolicy = "allkeys-lru"
 	defaultPort = 6379
 	defaultImage = "redis:4-alpine"
 )
+
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
@@ -27,6 +29,7 @@ type Redis struct {
 	Spec              RedisSpec   `json:"spec"`
 	Status            RedisStatus `json:"status,omitempty"`
 }
+
 
 func (redis *Redis) SetDefaults() bool {
 	changed := false

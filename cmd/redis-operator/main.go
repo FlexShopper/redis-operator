@@ -26,7 +26,7 @@ func main() {
 
 	resource := "cache.flexshopper.com/v1alpha1"
 	kind := "Redis"
-	namespace := ""
+	namespace := "" // we leave this empty so we can watch _all_ namespaces
 	resyncPeriod := time.Duration(5) * time.Second
 	logrus.Infof("Watching %s, %s, %s, %d", resource, kind, namespace, resyncPeriod)
 	sdk.Watch(resource, kind, namespace, resyncPeriod)

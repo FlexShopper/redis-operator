@@ -1,19 +1,22 @@
 package stub
+// Example operator handle code below method names have been chosen for explicitness
+// not idiomatic go-ness
 
 import (
 	"context"
+	"crypto/md5"
+	"encoding/hex"
 	"github.com/flexshopper/redis-operator/pkg/apis/cache/v1alpha1"
 	rConfig "github.com/flexshopper/redis-operator/pkg/config"
 	"github.com/operator-framework/operator-sdk/pkg/sdk"
 	"github.com/sirupsen/logrus"
+	"k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/api/apps/v1"
-	"crypto/md5"
-	"encoding/hex"
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
+
 
 func NewHandler() sdk.Handler {
 	return &Handler{}
@@ -23,6 +26,9 @@ type Handler struct {
 	// Fill me
 }
 
+// This method handles incoming events, we filter for our own and take action
+// The incoming event looks like:
+// { Deleted: <true|false>, Object: Redis }
 func (h *Handler) Handle(ctx context.Context, event sdk.Event) error {
 	switch o := event.Object.(type) {
 	case *v1alpha1.Redis:
@@ -30,7 +36,7 @@ func (h *Handler) Handle(ctx context.Context, event sdk.Event) error {
 			return deleteResources(o)
 		}
 
-		err := reconcile(o)
+		err := createOrUpdateResources(o)
 		if err != nil && !errors.IsAlreadyExists(err) {
 			logrus.Errorf("failed to reconcile redis with error : %v", err)
 			return err
@@ -42,19 +48,27 @@ func (h *Handler) Handle(ctx context.Context, event sdk.Event) error {
 
 func deleteResources(redis *v1alpha1.Redis) error {
 
-	deploy := deployment(redis)
-	err :=  sdk.Delete(deploy)
+	deploy, err := getDeploymentDefinition(redis)
 	if err != nil {
 		return err
 	}
 
-	cm := configMap(redis)
+	err =  sdk.Delete(deploy)
+	if err != nil {
+		return err
+	}
+
+	cm, err := getConfigMapDefinition(redis)
+	if err != nil {
+		return err
+	}
+
 	err = sdk.Delete(cm)
 	if err != nil {
 		return err
 	}
 
-	svc := service(redis)
+	svc := getServiceDefinition(redis)
 	err = sdk.Delete(svc)
 	if err != nil {
 		return err
@@ -63,18 +77,18 @@ func deleteResources(redis *v1alpha1.Redis) error {
 	return nil
 }
 
-func reconcile(r *v1alpha1.Redis) error {
-	err := reconcileConfigMap(r)
+func createOrUpdateResources(r *v1alpha1.Redis) error {
+	err := createOrUpdateConfigMap(r)
 	if err != nil {
 		return err
 	}
 
-	err = reconcileDeployment(r)
+	err = createOrUpdateDeployment(r)
 	if err != nil {
 		return err
 	}
 
-	err = reconcileService(r)
+	err = createOrUpdateService(r)
 	if err != nil {
 		return err
 	}
@@ -82,12 +96,13 @@ func reconcile(r *v1alpha1.Redis) error {
 	return nil
 }
 
-func reconcileService(r *v1alpha1.Redis) error {
+func createOrUpdateService(r *v1alpha1.Redis) error {
 	redis := r.DeepCopy()
 	changed := redis.SetDefaults()
 
 	if changed {
-		svc := service(redis)
+		svc := getServiceDefinition(redis)
+
 		err := sdk.Update(svc)
 
 		if errors.IsNotFound(err) {
@@ -102,13 +117,17 @@ func reconcileService(r *v1alpha1.Redis) error {
 	return nil
 }
 
-func reconcileConfigMap(r *v1alpha1.Redis) error {
+func createOrUpdateConfigMap(r *v1alpha1.Redis) error {
 	redis := r.DeepCopy()
 	changed := redis.SetDefaults()
 
 	if changed {
-		cm := configMap(redis)
-		err := sdk.Update(cm)
+		cm, err := getConfigMapDefinition(redis)
+		if err != nil {
+			return err
+		}
+
+		err = sdk.Update(cm)
 
 		if errors.IsNotFound(err) {
 			err = sdk.Create(cm)
@@ -122,12 +141,16 @@ func reconcileConfigMap(r *v1alpha1.Redis) error {
 	return nil
 }
 
-func reconcileDeployment(r *v1alpha1.Redis) error {
+func createOrUpdateDeployment(r *v1alpha1.Redis) error {
 	redis := r.DeepCopy()
 	changed := redis.SetDefaults()
 	if changed {
-		deploy := deployment(redis)
-		err := sdk.Update(deploy)
+		deploy, err := getDeploymentDefinition(redis)
+		if err != nil {
+			return err
+		}
+
+		err = sdk.Update(deploy)
 
 		if errors.IsNotFound(err) {
 			err = sdk.Create(deploy)
@@ -141,7 +164,7 @@ func reconcileDeployment(r *v1alpha1.Redis) error {
 	return nil
 }
 
-func service(redis *v1alpha1.Redis) *corev1.Service {
+func getServiceDefinition(redis *v1alpha1.Redis) *corev1.Service {
 	labels := redisLabels(redis.Name)
 	return &corev1.Service{
 		TypeMeta: metav1.TypeMeta{
@@ -151,6 +174,7 @@ func service(redis *v1alpha1.Redis) *corev1.Service {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: redis.Name,
 			Namespace: redis.Namespace,
+			Labels: genericObjectDefinitionLabels(),
 		},
 		Spec: corev1.ServiceSpec{
 			Type: "ClusterIP",
@@ -170,16 +194,16 @@ func service(redis *v1alpha1.Redis) *corev1.Service {
 	}
 }
 
-func deployment(redis *v1alpha1.Redis) *v1.Deployment {
+func getDeploymentDefinition(redis *v1alpha1.Redis) (*v1.Deployment, error) {
 	replicas := int32(1)
 	redisConfigs, err := rConfig.ParseConfig(redis.Spec.DeepCopy())
 
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	configHash := getMd5(redisConfigs)
-	labels := redisLabels(redis.Name)
+	labels := getCombinedLabels(redis.Name)
 
 	return &v1.Deployment{
 		TypeMeta: metav1.TypeMeta{
@@ -189,6 +213,7 @@ func deployment(redis *v1alpha1.Redis) *v1.Deployment {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: redis.Name,
 			Namespace: redis.Namespace,
+			Labels: labels,
 		},
 		Spec: v1.DeploymentSpec{
 			Replicas: &replicas,
@@ -246,14 +271,14 @@ func deployment(redis *v1alpha1.Redis) *v1.Deployment {
 				},
 			},
 		},
-	}
+	}, nil
 }
 
-func configMap(redis *v1alpha1.Redis) *corev1.ConfigMap {
+func getConfigMapDefinition(redis *v1alpha1.Redis) (*corev1.ConfigMap, error) {
 	redisConfigs, err := rConfig.ParseConfig(redis.Spec.DeepCopy())
 
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	rConfigMap := &corev1.ConfigMap{
@@ -264,13 +289,31 @@ func configMap(redis *v1alpha1.Redis) *corev1.ConfigMap {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: redis.Name,
 			Namespace: redis.Namespace,
+			Labels: genericObjectDefinitionLabels(),
 		},
 		Data: map[string]string{
 			"redis.config": redisConfigs,
 		},
 	}
 
-	return rConfigMap
+	return rConfigMap, nil
+}
+
+func getCombinedLabels(name string) map[string]string {
+	labels := redisLabels(name)
+	genericLabels := genericObjectDefinitionLabels()
+
+	for k, v := range genericLabels {
+		labels[k] = v
+	}
+
+	return labels
+}
+
+func genericObjectDefinitionLabels() map[string]string {
+	return map[string]string{
+		"flexOperator": "cache",
+	}
 }
 
 func redisLabels(name string) map[string]string {
