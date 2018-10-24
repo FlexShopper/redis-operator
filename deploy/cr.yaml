@@ -1,8 +1,7 @@
 apiVersion: "cache.flexshopper.com/v1alpha1"
 kind: "Redis"
 metadata:
-  name: "look-aside-cache"
-  namespace: "real-app"
+  name: "cache"
 spec:
-  maxMemory: "1gb"
+  maxMemory: "2gb"
   port: 7001

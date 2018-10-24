@@ -36,14 +36,59 @@ func (h *Handler) Handle(ctx context.Context, event sdk.Event) error {
 			return deleteResources(o)
 		}
 
+		o.Status.Phase = "Initializing"
+		sdk.Update(o)
+
+		validationErrors := validate(o)
+		if len(validationErrors) > 0 {
+			o.Status.Phase = "Erred"
+			o.Status.Errors = validationErrors
+			sdk.Update(o)
+			logrus.Error("there were validation errors")
+			return nil
+		}
+
 		err := createOrUpdateResources(o)
 		if err != nil && !errors.IsAlreadyExists(err) {
 			logrus.Errorf("failed to reconcile redis with error : %v", err)
 			return err
 		}
+
+		o.Status.Errors = nil
+		o.Status.Phase = "Complete"
+		sdk.Update(o)
 	}
 
 	return nil
+}
+
+func genericObjectDefinitionLabels() map[string]string {
+	return map[string]string{
+		"flexOperator": "cache",
+	}
+}
+
+func redisLabels(name string) map[string]string {
+	return map[string]string{
+		"lru-cache": name,
+	}
+}
+
+func getCombinedLabels(name string) map[string]string {
+	labels := redisLabels(name)
+	genericLabels := genericObjectDefinitionLabels()
+
+	for k, v := range genericLabels {
+		labels[k] = v
+	}
+
+	return labels
+}
+
+func getMd5(text string) string {
+	hasher := md5.New()
+	hasher.Write([]byte(text))
+	return hex.EncodeToString(hasher.Sum(nil))
 }
 
 func deleteResources(redis *v1alpha1.Redis) error {
@@ -117,53 +162,6 @@ func createOrUpdateService(r *v1alpha1.Redis) error {
 	return nil
 }
 
-func createOrUpdateConfigMap(r *v1alpha1.Redis) error {
-	redis := r.DeepCopy()
-	changed := redis.SetDefaults()
-
-	if changed {
-		cm, err := getConfigMapDefinition(redis)
-		if err != nil {
-			return err
-		}
-
-		err = sdk.Update(cm)
-
-		if errors.IsNotFound(err) {
-			err = sdk.Create(cm)
-		}
-
-		if err != nil && !errors.IsAlreadyExists(err) {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func createOrUpdateDeployment(r *v1alpha1.Redis) error {
-	redis := r.DeepCopy()
-	changed := redis.SetDefaults()
-	if changed {
-		deploy, err := getDeploymentDefinition(redis)
-		if err != nil {
-			return err
-		}
-
-		err = sdk.Update(deploy)
-
-		if errors.IsNotFound(err) {
-			err = sdk.Create(deploy)
-		}
-
-		if err != nil && !errors.IsAlreadyExists(err) {
-			return err
-		}
-	}
-
-	return nil
-}
-
 func getServiceDefinition(redis *v1alpha1.Redis) *corev1.Service {
 	labels := redisLabels(redis.Name)
 	return &corev1.Service{
@@ -193,6 +191,79 @@ func getServiceDefinition(redis *v1alpha1.Redis) *corev1.Service {
 		},
 	}
 }
+
+func createOrUpdateConfigMap(r *v1alpha1.Redis) error {
+	redis := r.DeepCopy()
+	changed := redis.SetDefaults()
+
+	if changed {
+		cm, err := getConfigMapDefinition(redis)
+		if err != nil {
+			return err
+		}
+
+		err = sdk.Update(cm)
+
+		if errors.IsNotFound(err) {
+			err = sdk.Create(cm)
+		}
+
+		if err != nil && !errors.IsAlreadyExists(err) {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func getConfigMapDefinition(redis *v1alpha1.Redis) (*corev1.ConfigMap, error) {
+	redisConfigs, err := rConfig.ParseConfig(redis.Spec.DeepCopy())
+
+	if err != nil {
+		return nil, err
+	}
+
+	rConfigMap := &corev1.ConfigMap{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "v1",
+			Kind: "ConfigMap",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: redis.Name,
+			Namespace: redis.Namespace,
+			Labels: genericObjectDefinitionLabels(),
+		},
+		Data: map[string]string{
+			"redis.config": redisConfigs,
+		},
+	}
+
+	return rConfigMap, nil
+}
+
+func createOrUpdateDeployment(r *v1alpha1.Redis) error {
+	redis := r.DeepCopy()
+	changed := redis.SetDefaults()
+	if changed {
+		deploy, err := getDeploymentDefinition(redis)
+		if err != nil {
+			return err
+		}
+
+		err = sdk.Update(deploy)
+
+		if errors.IsNotFound(err) {
+			err = sdk.Create(deploy)
+		}
+
+		if err != nil && !errors.IsAlreadyExists(err) {
+			return err
+		}
+	}
+
+	return nil
+}
+
 
 func getDeploymentDefinition(redis *v1alpha1.Redis) (*v1.Deployment, error) {
 	replicas := int32(1)
@@ -272,58 +343,4 @@ func getDeploymentDefinition(redis *v1alpha1.Redis) (*v1.Deployment, error) {
 			},
 		},
 	}, nil
-}
-
-func getConfigMapDefinition(redis *v1alpha1.Redis) (*corev1.ConfigMap, error) {
-	redisConfigs, err := rConfig.ParseConfig(redis.Spec.DeepCopy())
-
-	if err != nil {
-		return nil, err
-	}
-
-	rConfigMap := &corev1.ConfigMap{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "v1",
-			Kind: "ConfigMap",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name: redis.Name,
-			Namespace: redis.Namespace,
-			Labels: genericObjectDefinitionLabels(),
-		},
-		Data: map[string]string{
-			"redis.config": redisConfigs,
-		},
-	}
-
-	return rConfigMap, nil
-}
-
-func getCombinedLabels(name string) map[string]string {
-	labels := redisLabels(name)
-	genericLabels := genericObjectDefinitionLabels()
-
-	for k, v := range genericLabels {
-		labels[k] = v
-	}
-
-	return labels
-}
-
-func genericObjectDefinitionLabels() map[string]string {
-	return map[string]string{
-		"flexOperator": "cache",
-	}
-}
-
-func redisLabels(name string) map[string]string {
-	return map[string]string{
-		"lru-cache": name,
-	}
-}
-
-func getMd5(text string) string {
-	hasher := md5.New()
-	hasher.Write([]byte(text))
-	return hex.EncodeToString(hasher.Sum(nil))
 }

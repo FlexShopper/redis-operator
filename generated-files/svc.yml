@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    flexOperator: cache
+  name: look-aside-cache
+  namespace: real-app
+spec:
+  clusterIP: 10.97.88.165
+  ports:
+  - name: redis
+    port: 7001
+    protocol: TCP
+    targetPort: 7001
+  selector:
+    lru-cache: look-aside-cache
+  sessionAffinity: None
+  type: ClusterIP

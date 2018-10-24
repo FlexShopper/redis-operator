@@ -59,13 +59,14 @@ func (redis *Redis) SetDefaults() bool {
 }
 
 type RedisSpec struct {
-	Image string `json:"string"`
-	Port int32 `json:"port"`
-	PasswordSecret string `json:"passwordSecret"`
-	MaxMemory string `json:"maxMemory"`
-	MaxMemoryEvictionPolicy string `json:"maxMemoryEvictionPolicy"`
+	Image string `json:"string,omitempty"`
+	Port int32 `json:"port,omitempty"`
+	PasswordSecret string `json:"passwordSecret,omitempty"`
+	MaxMemory string `json:"maxMemory,omitempty"`
+	MaxMemoryEvictionPolicy string `json:"maxMemoryEvictionPolicy,omitempty"`
 }
 
 type RedisStatus struct {
-	// Fill me
+	Phase string `json:"phase"`
+	Errors []string `json:"errors,omitempty"`
 }

@@ -1,0 +1,10 @@
+apiVersion: cache.flexshopper.com/v1alpha1
+kind: Redis
+metadata:
+  name: look-aside-cache
+  namespace: real-app
+spec:
+  maxMemory: 500mb
+  port: 7001
+status:
+  phase: Complete

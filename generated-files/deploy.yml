@@ -1,0 +1,43 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  labels:
+    flexOperator: cache
+    lru-cache: look-aside-cache
+  name: look-aside-cache
+  namespace: real-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      flexOperator: cache
+      lru-cache: look-aside-cache
+  template:
+    metadata:
+      annotations:
+        configmap/hash: e7d980aa6be8a0109b8b3bc5ad8c3f86
+      labels:
+        flexOperator: cache
+        lru-cache: look-aside-cache
+    spec:
+      containers:
+      - command:
+        - redis-server
+        - /usr/local/etc/redis/redis.conf
+        image: redis:4-alpine
+        imagePullPolicy: IfNotPresent
+        name: look-aside-cache
+        ports:
+        - containerPort: 7001
+          name: redis
+          protocol: TCP
+        volumeMounts:
+        - mountPath: /usr/local/etc/redis/
+          name: redis-config
+      volumes:
+      - configMap:
+          items:
+          - key: redis.config
+            path: redis.conf
+          name: look-aside-cache
+        name: redis-config
